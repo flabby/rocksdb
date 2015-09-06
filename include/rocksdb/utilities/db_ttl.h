@@ -50,6 +50,17 @@ class DBWithTTL : public StackableDB {
       const ColumnFamilyOptions& options, const std::string& column_family_name,
       ColumnFamilyHandle** handle, int ttl) = 0;
 
+  static Status OpenWithKeyTTL(const Options& options, const std::string& dbname,
+                     DBWithTTL** dbptr);
+
+  Status GetKeyTTL(const ReadOptions& options, const Slice& key, int32_t *ttl);
+
+  Status PutWithKeyTTL(const WriteOptions& options, const Slice& key, const Slice& val, int32_t ttl);
+  Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl);
+  Status PutWithExpiredTime(const WriteOptions& options, const Slice& key, const Slice& val, int32_t expired_time);
+  Status WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* updates, int32_t expired_time);
+
+
   static Status Open(const Options& options, const std::string& dbname,
                      DBWithTTL** dbptr, int32_t ttl = 0,
                      bool read_only = false);

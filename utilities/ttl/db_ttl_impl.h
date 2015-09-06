@@ -25,6 +25,7 @@ class DBWithTTLImpl : public DBWithTTL {
                               Env* env);
 
   explicit DBWithTTLImpl(DB* db);
+  explicit DBWithTTLImpl(DB* db, int ttl);
 
   virtual ~DBWithTTLImpl();
 
@@ -73,6 +74,7 @@ class DBWithTTLImpl : public DBWithTTL {
 
   virtual DB* GetBaseDB() override { return db_; }
 
+
   static bool IsStale(const Slice& value, int32_t ttl, Env* env);
 
   static Status AppendTS(const Slice& val, std::string* val_with_ts, Env* env);
@@ -86,6 +88,12 @@ class DBWithTTLImpl : public DBWithTTL {
   static const int32_t kMinTimestamp = 1368146402;  // 05/09/2013:5:40PM GMT-8
 
   static const int32_t kMaxTimestamp = 2147483647;  // 01/18/2038:7:14PM GMT-8
+
+  // add Key TTL feature
+  static int32_t GetTTLFromNow(const Slice& value, int32_t ttl, Env* env);
+  static Status AppendTSWithKeyTTL(const Slice& val, std::string* val_with_ts, Env* env, int32_t ttl);
+  static Status AppendTSWithExpiredTime(const Slice& val, std::string* val_with_ts, Env* env, int32_t expired_time);
+  int32_t ttl_;
 };
 
 class TtlIterator : public Iterator {
