@@ -112,13 +112,6 @@ Status DBWithTTL::Open(
   return st;
 }
 
-
-// Open DB with key ttl
-Status DBWithTTL::OpenWithKeyTTL(const Options& options, const std::string& dbname,
-                       DBWithTTL** dbptr) {
-  return DBWithTTL::Open(options, dbname, dbptr, 1);
-}
-
 Status DBWithTTLImpl::CreateColumnFamilyWithTtl(
     const ColumnFamilyOptions& options, const std::string& column_family_name,
     ColumnFamilyHandle** handle, int ttl) {
@@ -234,16 +227,16 @@ Status DBWithTTLImpl::SanityCheckTimestamp(const Slice& str) {
 
 // Checks if the string is stale or not according to TTl provided
 bool DBWithTTLImpl::IsStale(const Slice& value, int32_t ttl, Env* env) {
-  if (ttl <= 0) {  // Data is fresh if TTL is non-positive
-    return false;
-  }
+ // if (ttl <= 0) {  // Data is fresh if TTL is non-positive
+ //   return false;
+ // }
   int64_t curtime;
   if (!env->GetCurrentTime(&curtime).ok()) {
     return false;  // Treat the data as fresh if could not get current time
   }
   int32_t timestamp_value =
       DecodeFixed32(value.data() + value.size() - kTSLength);
-  return (timestamp_value + ttl) < curtime;
+  return timestamp_value < curtime - ttl;
 }
 
 // Strips the TS from the end of the string
@@ -257,33 +250,27 @@ Status DBWithTTLImpl::StripTS(std::string* str) {
   return st;
 }
 
+// We treat Put as live forever (use a big TTL value)
 Status DBWithTTLImpl::Put(const WriteOptions& options,
                           ColumnFamilyHandle* column_family, const Slice& key,
                           const Slice& val) {
   WriteBatch batch;
   batch.Put(column_family, key, val);
-  return Write(options, &batch);
+  return WriteWithKeyTTL(options, &batch, ttl_);
 }
 
-
-Status DBWithTTL::PutWithKeyTTL(const WriteOptions& options, const Slice& key, const Slice& val, int32_t ttl)
-{
-  Status s;
+// PutWithKeyTTL should use a positive TTL, the default value is timeout immediatly
+Status DBWithTTL::PutWithKeyTTL(const WriteOptions& options, const Slice& key, const Slice& val, int32_t ttl) {
   WriteBatch batch;
   batch.Put(db_->DefaultColumnFamily(), key, val);
-  s = DBWithTTL::WriteWithKeyTTL(options, &batch, ttl);
-  return s;
+  return DBWithTTL::WriteWithKeyTTL(options, &batch, ttl);
 }
 
-Status DBWithTTL::PutWithExpiredTime(const WriteOptions& options, const Slice& key, const Slice& val, int32_t expired_time)
-{
-  Status s;
+Status DBWithTTL::PutWithExpiredTime(const WriteOptions& options, const Slice& key, const Slice& val, int32_t expired_time) {
   WriteBatch batch;
   batch.Put(db_->DefaultColumnFamily(), key, val);
-  s = DBWithTTL::WriteWithExpiredTime(options, &batch, expired_time);
-  return s;
+  return DBWithTTL::WriteWithExpiredTime(options, &batch, expired_time);
 }
-
 
 Status DBWithTTLImpl::Get(const ReadOptions& options,
                           ColumnFamilyHandle* column_family, const Slice& key,
@@ -297,7 +284,7 @@ Status DBWithTTLImpl::Get(const ReadOptions& options,
     return st;
   }
 
-  if (IsStale(*value, ttl_, db_->GetEnv())) {
+  if (IsStale(*value, 0, db_->GetEnv())) {
     *value = "";
     return Status::NotFound("Is Stale");
   } else {
