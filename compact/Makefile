@@ -1,5 +1,5 @@
 GCC = g++
-CPPFLAGS = -Wall -W -DDEBUG -g -O2 -std=c++11  -static-libstdc++ -static-libgcc
+CPPFLAGS = -Wall -W -DDEBUG -g -O0 -std=c++11  -static-libstdc++ -static-libgcc
 OBJECT = compact
 
 LIB_PATH = -L ../ \
