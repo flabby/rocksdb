@@ -131,7 +131,7 @@ Status DBWithTTLImpl::CreateColumnFamily(const ColumnFamilyOptions& options,
 // Get the remained ttl accroding to the current timestamp and parameter
 // -1 means never timeout, we treat get current time
 int32_t DBWithTTLImpl::GetTTLFromNow(const Slice& value, int32_t ttl, Env* env) {
-  
+
   int32_t timestamp_value =
       DecodeFixed32(value.data() + value.size() - kTSLength);
   if (timestamp_value == 0) {
@@ -142,7 +142,7 @@ int32_t DBWithTTLImpl::GetTTLFromNow(const Slice& value, int32_t ttl, Env* env) 
   if (!env->GetCurrentTime(&curtime).ok()) {
     return -1;
   }
-  
+
   int32_t ttl_from_now = ttl - (curtime - timestamp_value);
   return ttl_from_now >= 0 ? ttl_from_now : 0;
 }

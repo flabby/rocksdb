@@ -12,14 +12,14 @@ LIBS = -Wl,-Bstatic -lrocksdb\
 	   -lz \
 	   -lbz2
 
-INCLUDE_PATH = -I../include/
+INCLUDE_PATH = -I../include
 
 .PHONY: all clean
 
 
 # BASE_BOJS := $(wildcard *.cpp)
 # BASE_BOJS += $(wildcard *.c)
-# OBJS := $(patsubst %.cpp,%.o,$(BASE_BOJS)) 
+# OBJS := $(patsubst %.cpp,%.o,$(BASE_BOJS))
 
 OBJS = compact.o
 
