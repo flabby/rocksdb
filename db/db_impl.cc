@@ -4046,6 +4046,10 @@ Status DB::Open(const DBOptions& db_options, const std::string& dbname,
     impl->opened_successfully_ = true;
     Log(InfoLogLevel::INFO_LEVEL, impl->db_options_.info_log, "DB pointer %p",
         impl);
+
+    //@ADD by flabby
+    impl->versions_->db_ = impl;
+
     *dbptr = impl;
   } else {
     for (auto* h : *handles) {

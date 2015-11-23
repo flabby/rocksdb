@@ -157,6 +157,8 @@ class TtlCompactionFilter : public CompactionFilter {
   virtual bool Filter(int level, const Slice& key, const Slice& old_val,
                       std::string* new_val, bool* value_changed) const
       override {
+    printf ("TtlCompactionFilter --> Filter key\n");
+
     if (DBWithTTLImpl::IsStale(old_val, 0, env_)) {
       return true;
     }
@@ -180,6 +182,7 @@ class TtlCompactionFilter : public CompactionFilter {
 
   virtual const char* Name() const override { return "Delete By TTL"; }
 
+  virtual void SetDB(DBImpl *db) { db_ = db; }
  private:
   int32_t ttl_;
   Env* env_;

@@ -629,6 +629,14 @@ Status CompactionJob::ProcessKeyValueCompaction(int64_t* imm_micros,
   int64_t key_drop_obsolete = 0;
   int64_t loop_cnt = 0;
 
+
+  //@ADD DBImple pointer to compaction filter
+  auto db_ = versions_->db_;
+  //compaction_filter->SetDB(db_);
+  compaction_filter->db_ = db_;
+  //    versions_->GetColumnFamilySet()->GetColumnFamily(kDefaultColumnFamilyName);
+  //cfd->options()->compact
+
   StopWatchNano timer(env_, stats_ != nullptr);
   uint64_t total_filter_time = 0;
   while (input->Valid() && !shutting_down_->load(std::memory_order_acquire) &&
