@@ -1,6 +1,6 @@
 GCC = g++
 CPPFLAGS = -Wall -W -DDEBUG -g -O0 -std=c++11  -static-libstdc++ -static-libgcc
-OBJECT = compact
+OBJECT = compact test
 
 LIB_PATH = -L ../ \
 			
@@ -21,12 +21,15 @@ INCLUDE_PATH = -I../include
 # BASE_BOJS += $(wildcard *.c)
 # OBJS := $(patsubst %.cpp,%.o,$(BASE_BOJS))
 
-OBJS = compact.o
+OBJS = compact.o test.o
 
 all: $(OBJECT)
 	rm *.o
 
-$(OBJECT): $(OBJS)
+compact: compact.o
+	$(GCC) $(CPPFLAGS) -o $@ $^ $(INCLUDE_PATH) $(LIB_PATH) $(LIBS)
+
+test: test.o
 	$(GCC) $(CPPFLAGS) -o $@ $^ $(INCLUDE_PATH) $(LIB_PATH) $(LIBS)
 
 %.o : %.cc

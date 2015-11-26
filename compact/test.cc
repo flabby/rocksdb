@@ -32,6 +32,9 @@ int main(int argc, char **argv)
     rocksdb::Status status = rocksdb::DBWithTTL::Open(options, argv[1], &db, '\0');
     assert(status.ok());
 
+    status = db->Put(rocksdb::WriteOptions(), "setkey1", "setval1");
+    assert(status.ok());
+
     status = db->Merge(rocksdb::WriteOptions(), "a", "1");
     assert(status.ok());
 

@@ -78,7 +78,7 @@ class CompactionFilter {
   // The name will be printed to LOG file on start up for diagnosis.
   virtual const char* Name() const = 0;
 
-  virtual void SetDB(DBImpl* db) { db_ = db; }
+  //virtual void SetDB(DBImpl* db) { db_ = db; }
   DBImpl* db_;
 };
 
