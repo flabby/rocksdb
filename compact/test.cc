@@ -35,8 +35,13 @@ int main(int argc, char **argv)
     status = db->Put(rocksdb::WriteOptions(), "setkey1", "setval1");
     assert(status.ok());
 
-    status = db->Merge(rocksdb::WriteOptions(), "a", "1");
+    std::string val;
+    status = db->Get(rocksdb::ReadOptions(), "setkey1", &val);
     assert(status.ok());
+    printf ("Get return %s, val is (%s)\n", status.ToString().c_str(), val.c_str());
+
+    //status = db->Merge(rocksdb::WriteOptions(), "a", "1");
+    //assert(status.ok());
 
     db->CompactRange(NULL, NULL);
     cout << path << endl;

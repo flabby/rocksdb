@@ -341,9 +341,13 @@ Status DBWithTTLImpl::SanityCheckTimestamp(const Slice& str) {
   return Status::OK();
 }
 
-Status DBWithTTLImpl::SanityCheckVersion(ColumnFamilyHandle* column_family, const Slice &key, const Slice& value) {
+Status DBWithTTLImpl::SanityCheckVersion(const Slice &key, const Slice& value) {
   if (value.size() < kVersionLength + kVersionLength + kTSLength) {
     return Status::Corruption("Error: value's length less than version and timestamp's\n");
+  }
+
+  if (db_->meta_prefix_ == kMetaPrefix_KV) {
+      return Status::OK();
   }
 
   // Checks that Version is not older than key version
@@ -379,6 +383,17 @@ Status DBWithTTLImpl::StripTS(std::string* str) {
   }
   // Erasing characters which hold the TS
   str->erase(str->length() - kTSLength, kTSLength);
+  return st;
+}
+
+// Strips the version and TS from the end of the string
+Status DBWithTTLImpl::StripVersionAndTS(std::string* str) {
+  Status st;
+  if (str->length() < kTSLength + kVersionLength) {
+    return Status::Corruption("Bad timestamp in key-value");
+  }
+  // Erasing characters which hold the version and TS
+  str->erase(str->length() - kTSLength - kVersionLength, kTSLength + kVersionLength);
   return st;
 }
 
@@ -444,10 +459,16 @@ Status DBWithTTLImpl::Get(const ReadOptions& options,
     *value = "";
     return Status::NotFound("Is Stale");
   } else {
-    return StripTS(value);
+    st = SanityCheckVersion(key, *value);
+    if (st.ok()) {
+      return StripVersionAndTS(value);
+    }
+    return st;
   }
 }
 
+// not used
+// @TODO fix this
 std::vector<Status> DBWithTTLImpl::MultiGet(
     const ReadOptions& options,
     const std::vector<ColumnFamilyHandle*>& column_family,
@@ -538,8 +559,7 @@ Status DBWithTTLImpl::Write(const WriteOptions& opts, WriteBatch* updates) {
   }
 }
 
-
-Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t ttl) {
+Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl, int32_t version) {
   class Handler : public WriteBatch::Handler {
    public:
     explicit Handler(Env* env, int32_t version, int32_t ttl) : env_(env), version_(version), ttl_(ttl) {}
@@ -648,10 +668,10 @@ bool TtlMergeOperator::FullMerge(const Slice& key, const Slice* existing_value,
                                          const std::deque<std::string>& operands,
                                          std::string* new_value, Logger* logger) const {
   // normal key, this section should not be reached
-  // if (db_->meta_prefix_ == kMetaPrefix_KV || (key.data())[0] != db_->meta_prefix_) {
-  //   *new_value = operands.back();
-  //   return true;
-  // }
+  if (db_->meta_prefix_ == kMetaPrefix_KV || (key.data())[0] != db_->meta_prefix_) {
+    *new_value = operands.back();
+    return true;
+  }
 
   const int32_t ts_len = DBImpl::kTSLength;
   const int32_t version_len = DBImpl::kVersionLength;

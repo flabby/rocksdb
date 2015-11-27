@@ -83,6 +83,8 @@ class DBWithTTLImpl : public DBWithTTL {
 
   static Status StripTS(std::string* str);
 
+  static Status StripVersionAndTS(std::string* str);
+
 
   static const int32_t kMinTimestamp = 1368146402;  // 05/09/2013:5:40PM GMT-8
 
@@ -95,7 +97,7 @@ class DBWithTTLImpl : public DBWithTTL {
   int32_t ttl_;
 
 
-  Status SanityCheckVersion(ColumnFamilyHandle* column_family, const Slice &key, const Slice& value);
+  Status SanityCheckVersion(const Slice &key, const Slice& value);
 
   //int32_t GetKeyVersion(ColumnFamilyHandle* column_family, const Slice& key);
   static Status AppendVersionAndExpiredTime(const Slice& val, std::string* val_with_ver_ts, Env* env, int32_t version, int32_t expired_time);

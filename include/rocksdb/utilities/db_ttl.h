@@ -68,7 +68,8 @@ class DBWithTTL : public StackableDB {
   //int32_t GetKeyVersion(const Slice& key);
 
   Status PutWithKeyTTL(const WriteOptions& options, const Slice& key, const Slice& val, int32_t ttl = 0);
-  Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t ttl);
+  Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl, int32_t version = -1);
+  //Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t ttl);
   Status PutWithExpiredTime(const WriteOptions& options, const Slice& key, const Slice& val, int32_t expired_time);
   Status WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t expired_time);
 
