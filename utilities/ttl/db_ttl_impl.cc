@@ -675,7 +675,10 @@ bool TtlMergeOperator::FullMerge(const Slice& key, const Slice* existing_value,
 
   const int32_t ts_len = DBImpl::kTSLength;
   const int32_t version_len = DBImpl::kVersionLength;
-  if (existing_value && existing_value->size() < ts_len + version_len) {
+  if (!existing_value) {
+      new_value->append(ts_len + version_len, '\0');
+      return true;
+  } else if (existing_value && existing_value->size() < ts_len + version_len) {
     Log(InfoLogLevel::ERROR_LEVEL, logger,
         "Error: Could not remove timestamp from existing value.");
     return false;
@@ -686,7 +689,7 @@ bool TtlMergeOperator::FullMerge(const Slice& key, const Slice* existing_value,
   int32_t current_version = DecodeFixed32(last_operand.data() + last_operand.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
 
   char version_string[version_len];
-  EncodeFixed32(version_string, (int32_t)current_version + 1);
+  EncodeFixed32(version_string, (int32_t)current_version + operands.size());
   last_operand.replace(last_operand.size() - DBImpl::kVersionLength - DBImpl::kTSLength, version_len, version_string, version_len);
 
   swap(*new_value, last_operand);
@@ -717,7 +720,7 @@ bool TtlMergeOperator::PartialMergeMulti(const Slice& key,
   int32_t current_version = DecodeFixed32(last_operand.data() + last_operand.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
 
   char version_string[version_len];
-  EncodeFixed32(version_string, (int32_t)current_version + 1);
+  EncodeFixed32(version_string, (int32_t)current_version + 2);
   last_operand.replace(last_operand.size() - DBImpl::kVersionLength - DBImpl::kTSLength, version_len, version_string, version_len);
 
   new_value->append(last_operand.data(), last_operand.size());
