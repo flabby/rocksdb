@@ -96,8 +96,7 @@ class DBWithTTLImpl : public DBWithTTL {
   static Status AppendTSWithExpiredTime(const Slice& val, std::string* val_with_ts, Env* env, int32_t expired_time);
   int32_t ttl_;
 
-
-  Status SanityCheckVersion(const Slice &key, const Slice& value);
+  //Status SanityCheckVersionAndTimestamp(const Slice &key, const Slice& value);
 
   //int32_t GetKeyVersion(ColumnFamilyHandle* column_family, const Slice& key);
   static Status AppendVersionAndExpiredTime(const Slice& val, std::string* val_with_ver_ts, Env* env, int32_t version, int32_t expired_time);
@@ -107,11 +106,28 @@ class DBWithTTLImpl : public DBWithTTL {
 class TtlIterator : public Iterator {
 
  public:
-  explicit TtlIterator(Iterator* iter) : iter_(iter) { assert(iter_); }
+  explicit TtlIterator(Iterator* iter, DB* db) : iter_(iter), db_(db) { assert(iter_); }
 
   ~TtlIterator() { delete iter_; }
 
-  bool Valid() const override { return iter_->Valid(); }
+  bool Valid() const override {
+    //bool ret = iter_->Valid();
+    //if (ret) {
+    if (iter_->Valid()) {
+      // check key version
+      if (db_->meta_prefix_ != kMetaPrefix_KV) {
+        int32_t fresh_version = db_->GetKeyVersion(iter_->key());
+        Slice val = iter_->value();
+        int32_t key_version = DecodeFixed32(val.data() + val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
+        if (key_version >= fresh_version) {
+          return true;
+        }
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
 
   void SeekToFirst() override { iter_->SeekToFirst(); }
 
@@ -134,7 +150,7 @@ class TtlIterator : public Iterator {
     // TODO: handle timestamp corruption like in general iterator semantics
     assert(DBWithTTLImpl::SanityCheckTimestamp(iter_->value()).ok());
     Slice trimmed_value = iter_->value();
-    trimmed_value.size_ -= DBImpl::kTSLength;
+    trimmed_value.size_ -= DBImpl::kVersionLength + DBImpl::kTSLength;
     return trimmed_value;
   }
 
@@ -142,6 +158,7 @@ class TtlIterator : public Iterator {
 
  private:
   Iterator* iter_;
+  DB* db_;
 };
 
 class TtlCompactionFilter : public CompactionFilter {
@@ -171,6 +188,7 @@ class TtlCompactionFilter : public CompactionFilter {
     if (db_->meta_prefix_ != kMetaPrefix_KV || (key.data())[0] == db_->meta_prefix_) {
       return false;
     }
+
     if (DBWithTTLImpl::IsStale(old_val, 0, env_)) {
       return true;
     }

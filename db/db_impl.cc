@@ -292,11 +292,11 @@ int32_t ReadLenData(const char *str, std::string *res = NULL) {
 // Get key version according to MetaKey;
 // Meta_key is meta_prefix + key, except for KV structure.
 // Note: The format is based on nemo
-// A return value of -1 means KV do not have meta.
+// A return value of 0 means that KV do not have meta.
 int32_t DBImpl::GetKeyVersion(const Slice& key) {
   // KV do not have meta_prefix
   if (meta_prefix_ == kMetaPrefix_KV) {
-    return -1;
+    return 0;
   }
 
   int32_t version = 0;
@@ -304,8 +304,12 @@ int32_t DBImpl::GetKeyVersion(const Slice& key) {
 
   std::string meta_key(1, meta_prefix_);
 
-  int32_t len = *((uint8_t *)key.data() + 1);
-  meta_key.append(key.data() + 2, len);
+  if (meta_prefix_ == (key.data())[0]) { 
+     meta_key.assign(key.data(), key.size());
+  } else {
+    int32_t len = *((uint8_t *)key.data() + 1);
+    meta_key.append(key.data() + 2, len);
+  }
 
   Status st = this->Get(ReadOptions(), DefaultColumnFamily(), meta_key, &value);
   if (st.ok()) {

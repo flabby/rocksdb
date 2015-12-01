@@ -27,8 +27,8 @@ void DBWithTTLImpl::SanitizeOptions(int32_t ttl, ColumnFamilyOptions* options,
   }
 
 //  if (options->merge_operator) {
-//    options->merge_operator.reset(
-//        new TtlMergeOperator(options->merge_operator, env));
+    options->merge_operator.reset(
+        new TtlMergeOperator(options->merge_operator, env));
 //  }
 }
 
@@ -87,7 +87,7 @@ Status DBWithTTL::Open(
         "ttls size has to be the same as number of column families");
   }
 
-  int key_ttl = 1;
+  int key_ttl = 0;
   std::vector<ColumnFamilyDescriptor> column_families_sanitized =
       column_families;
   for (size_t i = 0; i < column_families_sanitized.size(); ++i) {
@@ -223,13 +223,13 @@ Status DBWithTTL::GetKeyTTL(const ReadOptions& options, const Slice& key, int32_
         return st;
     }
 
-    if (DBWithTTLImpl::IsStale(value, 1, db_->GetEnv())) {
-        *ttl = 0;
-        return Status::OK();
+    st = SanityCheckVersionAndTimestamp(key, value);
+    if (st.ok()) {
+      *ttl = DBWithTTLImpl::GetTTLFromNow(value, 1, db_->GetEnv());
     } else {
-        *ttl = DBWithTTLImpl::GetTTLFromNow(value, 1, db_->GetEnv());
-        return Status::OK();
+      *ttl = 0;
     }
+    return Status::OK();
 }
 
 
@@ -341,11 +341,22 @@ Status DBWithTTLImpl::SanityCheckTimestamp(const Slice& str) {
   return Status::OK();
 }
 
-Status DBWithTTLImpl::SanityCheckVersion(const Slice &key, const Slice& value) {
-  if (value.size() < kVersionLength + kVersionLength + kTSLength) {
+Status DBWithTTL::SanityCheckVersionAndTimestamp(const Slice &key, const Slice& value) {
+  if (value.size() < kVersionLength + kTSLength) {
     return Status::Corruption("Error: value's length less than version and timestamp's\n");
   }
 
+  int64_t curtime;
+  Env* env = db_->GetEnv();
+  // Treat the data as fresh if could not get current time
+  if (env->GetCurrentTime(&curtime).ok()) {
+    int32_t timestamp_value = DecodeFixed32(value.data() + value.size() - kTSLength);
+    if (timestamp_value != 0 && timestamp_value < curtime) { // 0 means fresh
+      return Status::NotFound("Is stale\n");
+    }
+  }
+
+  // KV structure do not use version
   if (db_->meta_prefix_ == kMetaPrefix_KV) {
       return Status::OK();
   }
@@ -354,8 +365,9 @@ Status DBWithTTLImpl::SanityCheckVersion(const Slice &key, const Slice& value) {
   int32_t version_value = DecodeFixed32(value.data() + value.size() - kTSLength - kVersionLength);
   int32_t fresh_version = db_->GetKeyVersion(key);
   if (version_value < fresh_version) {
-    return Status::Corruption("Error: old version\n");
+    return Status::NotFound("old version\n");
   }
+
   return Status::OK();
 }
 
@@ -422,25 +434,25 @@ Status DBWithTTLImpl::StripVersionAndTS(std::string* str) {
 Status DBWithTTLImpl::Put(const WriteOptions& options,
                           ColumnFamilyHandle* column_family, const Slice& key,
                           const Slice& val) {
-  int32_t version = db_->GetKeyVersion(key);
+  //int32_t version = db_->GetKeyVersion(key);
   WriteBatch batch;
   batch.Put(column_family, key, val);
-  return WriteWithKeyTTL(options, &batch, version, ttl_);
+  return WriteWithKeyTTL(options, &batch, ttl_);
 }
 
 // PutWithKeyTTL should use a positive TTL
 Status DBWithTTL::PutWithKeyTTL(const WriteOptions& options, const Slice& key, const Slice& val, int32_t ttl) {
-  int32_t version = db_->GetKeyVersion(key);
+  //int32_t version = db_->GetKeyVersion(key);
   WriteBatch batch;
   batch.Put(db_->DefaultColumnFamily(), key, val);
-  return DBWithTTL::WriteWithKeyTTL(options, &batch, version, ttl);
+  return DBWithTTL::WriteWithKeyTTL(options, &batch, ttl);
 }
 
 Status DBWithTTL::PutWithExpiredTime(const WriteOptions& options, const Slice& key, const Slice& val, int32_t expired_time) {
-  int32_t version = db_->GetKeyVersion(key);
+  //int32_t version = db_->GetKeyVersion(key);
   WriteBatch batch;
   batch.Put(db_->DefaultColumnFamily(), key, val);
-  return DBWithTTL::WriteWithExpiredTime(options, &batch, version, expired_time);
+  return DBWithTTL::WriteWithExpiredTime(options, &batch, expired_time);
 }
 
 Status DBWithTTLImpl::Get(const ReadOptions& options,
@@ -455,14 +467,11 @@ Status DBWithTTLImpl::Get(const ReadOptions& options,
     return st;
   }
 
-  if (IsStale(*value, 0, db_->GetEnv())) {
-    *value = "";
-    return Status::NotFound("Is Stale");
+  st = SanityCheckVersionAndTimestamp(key, *value);
+  if (st.ok()) {
+    return StripVersionAndTS(value);
   } else {
-    st = SanityCheckVersion(key, *value);
-    if (st.ok()) {
-      return StripVersionAndTS(value);
-    }
+    *value = "";
     return st;
   }
 }
@@ -503,9 +512,11 @@ bool DBWithTTLImpl::KeyMayExist(const ReadOptions& options,
 Status DBWithTTLImpl::Merge(const WriteOptions& options,
                             ColumnFamilyHandle* column_family, const Slice& key,
                             const Slice& value) {
+  //int32_t version = db_->GetKeyVersion(key);
   WriteBatch batch;
   batch.Merge(column_family, key, value);
-  return Write(options, &batch);
+  //return Write(options, &batch);
+  return WriteWithKeyTTL(options, &batch, ttl_);
 }
 
 Status DBWithTTLImpl::Write(const WriteOptions& opts, WriteBatch* updates) {
@@ -559,16 +570,22 @@ Status DBWithTTLImpl::Write(const WriteOptions& opts, WriteBatch* updates) {
   }
 }
 
-Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl, int32_t version) {
+Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl) {
   class Handler : public WriteBatch::Handler {
    public:
-    explicit Handler(Env* env, int32_t version, int32_t ttl) : env_(env), version_(version), ttl_(ttl) {}
+    DBImpl* db_;
     WriteBatch updates_ttl;
     Status batch_rewrite_status;
+
+    explicit Handler(Env* env, int32_t ttl, DB* db)
+        : env_(env), ttl_(ttl), db_(reinterpret_cast<DBImpl*>(db)) {}
+
     virtual Status PutCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) {
       std::string value_with_ver_ts;
-      Status st = DBWithTTLImpl::AppendVersionAndKeyTTL(value, &value_with_ver_ts, env_, version_, ttl_);
+      int32_t version = db_->GetKeyVersion(key);
+
+      Status st = DBWithTTLImpl::AppendVersionAndKeyTTL(value, &value_with_ver_ts, env_, version, ttl_);
       if (!st.ok()) {
         batch_rewrite_status = st;
       } else {
@@ -580,7 +597,9 @@ Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates,
     virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                            const Slice& value) {
       std::string value_with_ver_ts;
-      Status st = DBWithTTLImpl::AppendVersionAndKeyTTL(value, &value_with_ver_ts, env_, version_, ttl_);
+      int32_t version = db_->GetKeyVersion(key);
+
+      Status st = DBWithTTLImpl::AppendVersionAndKeyTTL(value, &value_with_ver_ts, env_, version, ttl_);
       if (!st.ok()) {
         batch_rewrite_status = st;
       } else {
@@ -597,10 +616,11 @@ Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates,
 
    private:
     Env* env_;
-    int32_t version_;
     int32_t ttl_;
   };
-  Handler handler(GetEnv(), version, ttl);
+  //@ADD assign the db pointer
+  Handler handler(GetEnv(), ttl, db_);
+
   updates->Iterate(&handler);
   if (!handler.batch_rewrite_status.ok()) {
     return handler.batch_rewrite_status;
@@ -609,16 +629,22 @@ Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates,
   }
 }
 
-Status DBWithTTL::WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t expired_time) {
+Status DBWithTTL::WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* updates, int32_t expired_time) {
   class Handler : public WriteBatch::Handler {
    public:
-    explicit Handler(Env* env, int32_t version, int32_t expired_time) : env_(env), version_(version), expired_time_(expired_time){}
+    DBImpl* db_;
     WriteBatch updates_ttl;
     Status batch_rewrite_status;
+
+    explicit Handler(Env* env, int32_t expired_time, DB* db)
+        : env_(env), expired_time_(expired_time), db_(reinterpret_cast<DBImpl*>(db)) {}
+
     virtual Status PutCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) {
       std::string value_with_ver_ts;
-      Status st = DBWithTTLImpl::AppendVersionAndExpiredTime(value, &value_with_ver_ts, env_, version_, expired_time_);
+      int32_t version = db_->GetKeyVersion(key);
+
+      Status st = DBWithTTLImpl::AppendVersionAndExpiredTime(value, &value_with_ver_ts, env_, version, expired_time_);
       if (!st.ok()) {
         batch_rewrite_status = st;
       } else {
@@ -630,7 +656,9 @@ Status DBWithTTL::WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* upd
     virtual Status MergeCF(uint32_t column_family_id, const Slice& key,
                            const Slice& value) {
       std::string value_with_ver_ts;
-      Status st = DBWithTTLImpl::AppendVersionAndExpiredTime(value, &value_with_ver_ts, env_, version_, expired_time_);
+      int32_t version = db_->GetKeyVersion(key);
+
+      Status st = DBWithTTLImpl::AppendVersionAndExpiredTime(value, &value_with_ver_ts, env_, version, expired_time_);
       if (!st.ok()) {
         batch_rewrite_status = st;
       } else {
@@ -647,10 +675,11 @@ Status DBWithTTL::WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* upd
 
    private:
     Env* env_;
-    int32_t version_;
     int32_t expired_time_;
   };
-  Handler handler(GetEnv(), version, expired_time);
+  //@ADD assign the db pointer
+  Handler handler(GetEnv(), expired_time, db_);
+
   updates->Iterate(&handler);
   if (!handler.batch_rewrite_status.ok()) {
     return handler.batch_rewrite_status;
@@ -661,24 +690,23 @@ Status DBWithTTL::WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* upd
 
 Iterator* DBWithTTLImpl::NewIterator(const ReadOptions& opts,
                                      ColumnFamilyHandle* column_family) {
-  return new TtlIterator(db_->NewIterator(opts, column_family));
+  return new TtlIterator(db_->NewIterator(opts, column_family), db_);
 }
 
+// We do not need to check when existing_value is null
 bool TtlMergeOperator::FullMerge(const Slice& key, const Slice* existing_value,
                                          const std::deque<std::string>& operands,
                                          std::string* new_value, Logger* logger) const {
   // normal key, this section should not be reached
-  if (db_->meta_prefix_ == kMetaPrefix_KV || (key.data())[0] != db_->meta_prefix_) {
-    *new_value = operands.back();
-    return true;
-  }
+ // if (db_->meta_prefix_ == kMetaPrefix_KV || (key.data())[0] != db_->meta_prefix_) {
+ //   *new_value = operands.back();
+ //   return true;
+ // }
 
   const int32_t ts_len = DBImpl::kTSLength;
   const int32_t version_len = DBImpl::kVersionLength;
-  if (!existing_value) {
-      new_value->append(ts_len + version_len, '\0');
-      return true;
-  } else if (existing_value && existing_value->size() < ts_len + version_len) {
+
+  if (existing_value && existing_value->size() < ts_len + version_len) {
     Log(InfoLogLevel::ERROR_LEVEL, logger,
         "Error: Could not remove timestamp from existing value.");
     return false;

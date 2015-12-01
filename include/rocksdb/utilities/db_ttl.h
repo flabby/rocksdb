@@ -64,14 +64,13 @@ class DBWithTTL : public StackableDB {
 
 
   // add key ttl feature and key version
+  Status SanityCheckVersionAndTimestamp(const Slice &key, const Slice& value);
   Status GetKeyTTL(const ReadOptions& options, const Slice& key, int32_t *ttl);
-  //int32_t GetKeyVersion(const Slice& key);
 
   Status PutWithKeyTTL(const WriteOptions& options, const Slice& key, const Slice& val, int32_t ttl = 0);
-  Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl, int32_t version = -1);
-  //Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t ttl);
+  Status WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates, int32_t ttl = 0);
   Status PutWithExpiredTime(const WriteOptions& options, const Slice& key, const Slice& val, int32_t expired_time);
-  Status WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* updates, int32_t version, int32_t expired_time);
+  Status WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* updates, int32_t expired_time);
 
   static Status Open(const Options& options, const std::string& dbname,
                      DBWithTTL** dbptr,  const char meta_prefix, int32_t ttl = 0,
