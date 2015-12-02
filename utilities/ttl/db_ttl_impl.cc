@@ -26,10 +26,13 @@ void DBWithTTLImpl::SanitizeOptions(int32_t ttl, ColumnFamilyOptions* options,
             ttl, env, options->compaction_filter_factory));
   }
 
-//  if (options->merge_operator) {
+  if (options->merge_operator) {
     options->merge_operator.reset(
         new TtlMergeOperator(options->merge_operator, env));
-//  }
+  } else {
+    options->merge_operator = std::shared_ptr<TtlMergeOperator>(
+        new TtlMergeOperator());
+  }
 }
 
 // Open the db inside DBWithTTLImpl because options needs pointer to its ttl
@@ -578,7 +581,7 @@ Status DBWithTTL::WriteWithKeyTTL(const WriteOptions& opts, WriteBatch* updates,
     Status batch_rewrite_status;
 
     explicit Handler(Env* env, int32_t ttl, DB* db)
-        : env_(env), ttl_(ttl), db_(reinterpret_cast<DBImpl*>(db)) {}
+        : db_(reinterpret_cast<DBImpl*>(db)), env_(env), ttl_(ttl) {}
 
     virtual Status PutCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) {
@@ -637,7 +640,7 @@ Status DBWithTTL::WriteWithExpiredTime(const WriteOptions& opts, WriteBatch* upd
     Status batch_rewrite_status;
 
     explicit Handler(Env* env, int32_t expired_time, DB* db)
-        : env_(env), expired_time_(expired_time), db_(reinterpret_cast<DBImpl*>(db)) {}
+        : db_(reinterpret_cast<DBImpl*>(db)), env_(env), expired_time_(expired_time) {}
 
     virtual Status PutCF(uint32_t column_family_id, const Slice& key,
                          const Slice& value) {
@@ -754,6 +757,64 @@ bool TtlMergeOperator::PartialMergeMulti(const Slice& key,
   new_value->append(last_operand.data(), last_operand.size());
   return true;
 }
+
+bool TtlCompactionFilter::Filter(int level, const Slice& key, const Slice& old_val,
+                      std::string* new_val, bool* value_changed) const {
+
+    if (db_->meta_prefix_ == kMetaPrefix_KV) {
+        if (DBWithTTLImpl::IsStale(old_val, 0, env_)) {
+          return true;
+        }
+    } else {
+      // reserve meta key for hash, list, zset, set
+      if ((key.data())[0] == db_->meta_prefix_) {
+        return false;
+      }
+
+      int32_t fresh_version = 0;
+      std::string value;
+
+      // Get meta key and value
+      std::string meta_key(1, db_->meta_prefix_);
+      int32_t len = *((uint8_t *)key.data() + 1);
+      meta_key.append(key.data() + 2, len);
+
+      Status st = db_->Get(ReadOptions(), db_->DefaultColumnFamily(), meta_key, &value);
+
+      if (st.ok()) {
+        if (DBWithTTLImpl::IsStale(value, 0, env_)) {
+          return true;
+        }
+
+        // check key version
+        fresh_version = DecodeFixed32(value.data() + value.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
+
+        //int32_t fresh_version = db_->GetKeyVersion(key);
+        int32_t key_version = DecodeFixed32(old_val.data() + old_val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
+        if (key_version < fresh_version) {
+          return true;
+        }
+      }
+    }
+
+    if (user_comp_filter_ == nullptr) {
+      return false;
+    }
+    assert(old_val.size() >= DBImpl::kTSLength);
+    Slice old_val_without_ts(old_val.data(),
+                             old_val.size() - DBImpl::kTSLength);
+    if (user_comp_filter_->Filter(level, key, old_val_without_ts, new_val,
+                                  value_changed)) {
+      return true;
+    }
+    if (*value_changed) {
+      new_val->append(
+          old_val.data() + old_val.size() - DBImpl::kTSLength,
+          DBImpl::kTSLength);
+    }
+    return false;
+  }
+
 
 }  // namespace rocksdb
 #endif  // ROCKSDB_LITE

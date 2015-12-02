@@ -9,13 +9,14 @@
 #include <string>
 #include <vector>
 
+#include "db/db_impl.h"
 #include "rocksdb/db.h"
 #include "rocksdb/env.h"
+#include "rocksdb/options.h"
 #include "rocksdb/compaction_filter.h"
 //#include "rocksdb/merge_operator.h"
 #include "rocksdb/utilities/utility_db.h"
 #include "rocksdb/utilities/db_ttl.h"
-#include "db/db_impl.h"
 
 namespace rocksdb {
 
@@ -180,45 +181,62 @@ class TtlCompactionFilter : public CompactionFilter {
   }
 
   virtual bool Filter(int level, const Slice& key, const Slice& old_val,
-                      std::string* new_val, bool* value_changed) const
-      override {
-    //printf ("TtlCompactionFilter --> Filter key(%s) size=%zu, db_->GetKeyVersion() = (%d)\n", key.data(), key.size(), db_->GetKeyVersion(key.data()));
+                      std::string* new_val, bool* value_changed) const override;
+ // {
 
-    // reserve meta key for hash, list, zset, set
-    if (db_->meta_prefix_ != kMetaPrefix_KV || (key.data())[0] == db_->meta_prefix_) {
-      return false;
-    }
+ //   if (db_->meta_prefix_ == kMetaPrefix_KV) {
+ //       if (DBWithTTLImpl::IsStale(old_val, 0, env_)) {
+ //         return true;
+ //       }
+ //   } else {
+ //     // reserve meta key for hash, list, zset, set
+ //     if ((key.data())[0] == db_->meta_prefix_) {
+ //       return false;
+ //     }
 
-    if (DBWithTTLImpl::IsStale(old_val, 0, env_)) {
-      return true;
-    }
+ //     int32_t fresh_version = 0;
+ //     std::string value;
 
-    // check key version
-    if (db_->meta_prefix_ != kMetaPrefix_KV) {
-      int32_t fresh_version = db_->GetKeyVersion(key);
-      int32_t key_version = DecodeFixed32(old_val.data() + old_val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
-      if (key_version < fresh_version) {
-        return true;
-      }
-    }
+ //     // Get meta key and value
+ //     std::string meta_key(1, db_->meta_prefix_);
+ //     int32_t len = *((uint8_t *)key.data() + 1);
+ //     meta_key.append(key.data() + 2, len);
 
-    if (user_comp_filter_ == nullptr) {
-      return false;
-    }
-    assert(old_val.size() >= DBImpl::kTSLength);
-    Slice old_val_without_ts(old_val.data(),
-                             old_val.size() - DBImpl::kTSLength);
-    if (user_comp_filter_->Filter(level, key, old_val_without_ts, new_val,
-                                  value_changed)) {
-      return true;
-    }
-    if (*value_changed) {
-      new_val->append(
-          old_val.data() + old_val.size() - DBImpl::kTSLength,
-          DBImpl::kTSLength);
-    }
-    return false;
-  }
+ //     Status st = db_->Get(ReadOptions(), DefaultColumnFamily(), meta_key, &value);
+
+ //     if (st.ok()) {
+ //       if (DBWithTTLImpl::IsStale(value, 0, env_)) {
+ //         return true;
+ //       }
+
+ //       // check key version
+ //       fresh_version = DecodeFixed32(value.data() + value.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
+
+ //       //int32_t fresh_version = db_->GetKeyVersion(key);
+ //       int32_t key_version = DecodeFixed32(old_val.data() + old_val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
+ //       if (key_version < fresh_version) {
+ //         return true;
+ //       }
+ //     }
+ //   }
+
+ //   if (user_comp_filter_ == nullptr) {
+ //     return false;
+ //   }
+ //   assert(old_val.size() >= DBImpl::kTSLength);
+ //   Slice old_val_without_ts(old_val.data(),
+ //                            old_val.size() - DBImpl::kTSLength);
+ //   if (user_comp_filter_->Filter(level, key, old_val_without_ts, new_val,
+ //                                 value_changed)) {
+ //     return true;
+ //   }
+ //   if (*value_changed) {
+ //     new_val->append(
+ //         old_val.data() + old_val.size() - DBImpl::kTSLength,
+ //         DBImpl::kTSLength);
+ //   }
+ //   return false;
+ // }
 
   virtual const char* Name() const override { return "Delete By TTL"; }
 

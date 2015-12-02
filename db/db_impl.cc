@@ -3048,6 +3048,9 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
         NewInternalIterator(read_options, cfd, sv, db_iter->GetArena());
     db_iter->SetIterUnderDBIter(internal_iter);
 
+    //@ADD Set db pointer
+    db_iter->SetDBUnderDBIter(this);
+
     return db_iter;
   }
   // To stop compiler from complaining
