@@ -221,18 +221,29 @@ Status DBWithTTL::GetKeyTTL(const ReadOptions& options, const Slice& key, int32_
         return st;
     }
 
-    st = DBWithTTLImpl::SanityCheckTimestamp(value);
-    if (!st.ok()) {
-        return st;
+    if (value.size() < kVersionLength + kTSLength) {
+      return Status::Corruption("Error: value's length less than version and timestamp's\n");
     }
 
-    st = SanityCheckVersionAndTimestamp(key, value);
-    if (st.ok()) {
-      *ttl = DBWithTTLImpl::GetTTLFromNow(value, 1, db_->GetEnv());
+    // KV do not need version check
+    if (db_->meta_prefix_ == kMetaPrefix_KV) {
+      if (DBWithTTLImpl::IsStale(value, 1, db_->GetEnv())) {
+        *ttl = 0;
+        return Status::NotFound("Is Stale");
+      } else {
+        *ttl = DBWithTTLImpl::GetTTLFromNow(value, 1, db_->GetEnv());
+        return Status::OK();
+      }
     } else {
-      *ttl = 0;
+      st = SanityCheckVersionAndTimestamp(key, value);
+      if (st.ok()) {
+        *ttl = DBWithTTLImpl::GetTTLFromNow(value, 1, db_->GetEnv());
+        return Status::OK();
+      } else {
+        *ttl = 0;
+        return st;
+      }
     }
-    return Status::OK();
 }
 
 
@@ -344,31 +355,41 @@ Status DBWithTTLImpl::SanityCheckTimestamp(const Slice& str) {
   return Status::OK();
 }
 
-Status DBWithTTL::SanityCheckVersionAndTimestamp(const Slice &key, const Slice& value) {
-  if (value.size() < kVersionLength + kTSLength) {
-    return Status::Corruption("Error: value's length less than version and timestamp's\n");
+// Check version for hash, list, zset and set structures
+// KV structure do not use version
+Status DBWithTTL::SanityCheckVersionAndTimestamp(const Slice &key, const Slice &value) {
+//  if (value.size() < kVersionLength + kTSLength) {
+//    return Status::Corruption("Error: value's length less than version and timestamp's\n");
+//  }
+
+  std::string meta_value;
+
+  int32_t timestamp_value = DecodeFixed32(value.data() + value.size() - kTSLength);
+  // data key
+  if (meta_prefix_ != (key.data())[0]) { 
+    std::string meta_key(1, meta_prefix_);
+    int32_t len = *((uint8_t *)key.data() + 1);
+    meta_key.append(key.data() + 2, len);
+
+    Status st = db_->Get(ReadOptions(), db_->DefaultColumnFamily(), meta_key, &meta_value);
+    if (st.ok()) {
+      // Checks that Version is not older than key version
+      int32_t meta_version = DecodeFixed32(meta_value.data() + meta_value.size() - kTSLength - kVersionLength);
+      int32_t data_version = DecodeFixed32(value.data() + value.size() - kTSLength - kVersionLength);
+      if (data_version < meta_version) {
+        return Status::NotFound("old version\n");
+      }
+    }
+    timestamp_value = DecodeFixed32(meta_value.data() + meta_value.size() - kTSLength);
   }
 
   int64_t curtime;
   Env* env = db_->GetEnv();
   // Treat the data as fresh if could not get current time
   if (env->GetCurrentTime(&curtime).ok()) {
-    int32_t timestamp_value = DecodeFixed32(value.data() + value.size() - kTSLength);
     if (timestamp_value != 0 && timestamp_value < curtime) { // 0 means fresh
       return Status::NotFound("Is stale\n");
     }
-  }
-
-  // KV structure do not use version
-  if (db_->meta_prefix_ == kMetaPrefix_KV) {
-      return Status::OK();
-  }
-
-  // Checks that Version is not older than key version
-  int32_t version_value = DecodeFixed32(value.data() + value.size() - kTSLength - kVersionLength);
-  int32_t fresh_version = db_->GetKeyVersion(key);
-  if (version_value < fresh_version) {
-    return Status::NotFound("old version\n");
   }
 
   return Status::OK();
@@ -465,17 +486,27 @@ Status DBWithTTLImpl::Get(const ReadOptions& options,
   if (!st.ok()) {
     return st;
   }
-  st = SanityCheckTimestamp(*value);
-  if (!st.ok()) {
-    return st;
+
+  if (value->size() < kVersionLength + kTSLength) {
+    return Status::Corruption("Error: value's length less than version and timestamp's\n");
   }
 
-  st = SanityCheckVersionAndTimestamp(key, *value);
-  if (st.ok()) {
-    return StripVersionAndTS(value);
+  // KV do not need version check
+  if (db_->meta_prefix_ == kMetaPrefix_KV) {
+    if (DBWithTTLImpl::IsStale(*value, 1, db_->GetEnv())) {
+      *value = "";
+      return Status::NotFound("Is Stale");
+    } else {
+      return StripVersionAndTS(value);
+    }
   } else {
-    *value = "";
-    return st;
+    st = SanityCheckVersionAndTimestamp(key, *value);
+    if (st.ok()) {
+      return StripVersionAndTS(value);
+    } else {
+      *value = "";
+      return st;
+    }
   }
 }
 
