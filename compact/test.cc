@@ -29,7 +29,7 @@ int main(int argc, char **argv)
      * rocksdb::Status status = rocksdb::DB::OpenForReadOnly(options, argv[1], &db);
      */
 
-    rocksdb::Status status = rocksdb::DBWithTTL::Open(options, argv[1], &db, '\0');
+    rocksdb::Status status = rocksdb::DBWithTTL::Open(options, argv[1], &db, 'H');
     assert(status.ok());
 
     status = db->Put(rocksdb::WriteOptions(), "setkey1", "setval1");
