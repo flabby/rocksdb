@@ -107,27 +107,29 @@ class DBWithTTLImpl : public DBWithTTL {
 class TtlIterator : public Iterator {
 
  public:
-  explicit TtlIterator(Iterator* iter, DB* db) : iter_(iter), db_(db) { assert(iter_); }
+  explicit TtlIterator(Iterator* iter, DB* db) : iter_(iter), db_(reinterpret_cast<DBImpl*>(db)) { assert(iter_); }
 
   ~TtlIterator() { delete iter_; }
 
   bool Valid() const override {
-    //bool ret = iter_->Valid();
-    //if (ret) {
-    if (iter_->Valid()) {
-      // check key version
-      if (db_->meta_prefix_ != kMetaPrefix_KV) {
-        int32_t fresh_version = db_->GetKeyVersion(iter_->key());
-        Slice val = iter_->value();
-        int32_t key_version = DecodeFixed32(val.data() + val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
-        if (key_version >= fresh_version) {
-          return true;
-        }
-      } else {
-        return true;
-      }
-    }
-    return false;
+    return iter_->Valid();
+
+  //  //bool ret = iter_->Valid();
+  //  //if (ret) {
+  //  if (iter_->Valid()) {
+  //    // check key version
+  //    if (db_->meta_prefix_ != kMetaPrefix_KV) {
+  //      int32_t fresh_version = db_->GetKeyVersion(iter_->key());
+  //      Slice val = iter_->value();
+  //      int32_t key_version = DecodeFixed32(val.data() + val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
+  //      if (key_version >= fresh_version) {
+  //        return true;
+  //      }
+  //    } else {
+  //      return true;
+  //    }
+  //  }
+  //  return false;
   }
 
   void SeekToFirst() override { iter_->SeekToFirst(); }
@@ -159,7 +161,7 @@ class TtlIterator : public Iterator {
 
  private:
   Iterator* iter_;
-  DB* db_;
+  DBImpl* db_;
 };
 
 class TtlCompactionFilter : public CompactionFilter {
@@ -182,65 +184,9 @@ class TtlCompactionFilter : public CompactionFilter {
 
   virtual bool Filter(int level, const Slice& key, const Slice& old_val,
                       std::string* new_val, bool* value_changed) const override;
- // {
-
- //   if (db_->meta_prefix_ == kMetaPrefix_KV) {
- //       if (DBWithTTLImpl::IsStale(old_val, 0, env_)) {
- //         return true;
- //       }
- //   } else {
- //     // reserve meta key for hash, list, zset, set
- //     if ((key.data())[0] == db_->meta_prefix_) {
- //       return false;
- //     }
-
- //     int32_t fresh_version = 0;
- //     std::string value;
-
- //     // Get meta key and value
- //     std::string meta_key(1, db_->meta_prefix_);
- //     int32_t len = *((uint8_t *)key.data() + 1);
- //     meta_key.append(key.data() + 2, len);
-
- //     Status st = db_->Get(ReadOptions(), DefaultColumnFamily(), meta_key, &value);
-
- //     if (st.ok()) {
- //       if (DBWithTTLImpl::IsStale(value, 0, env_)) {
- //         return true;
- //       }
-
- //       // check key version
- //       fresh_version = DecodeFixed32(value.data() + value.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
-
- //       //int32_t fresh_version = db_->GetKeyVersion(key);
- //       int32_t key_version = DecodeFixed32(old_val.data() + old_val.size() - DBImpl::kVersionLength - DBImpl::kTSLength);
- //       if (key_version < fresh_version) {
- //         return true;
- //       }
- //     }
- //   }
-
- //   if (user_comp_filter_ == nullptr) {
- //     return false;
- //   }
- //   assert(old_val.size() >= DBImpl::kTSLength);
- //   Slice old_val_without_ts(old_val.data(),
- //                            old_val.size() - DBImpl::kTSLength);
- //   if (user_comp_filter_->Filter(level, key, old_val_without_ts, new_val,
- //                                 value_changed)) {
- //     return true;
- //   }
- //   if (*value_changed) {
- //     new_val->append(
- //         old_val.data() + old_val.size() - DBImpl::kTSLength,
- //         DBImpl::kTSLength);
- //   }
- //   return false;
- // }
 
   virtual const char* Name() const override { return "Delete By TTL"; }
 
-  //virtual void SetDB(DBImpl *db) { db_ = db; }
  private:
   int32_t ttl_;
   Env* env_;

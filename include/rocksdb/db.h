@@ -593,8 +593,9 @@ class DB {
   }
   
   // Get Key Version 
-  virtual int32_t GetKeyVersion(const Slice& key) { return -1; }
-  char meta_prefix_;
+  virtual void GetKeyVersionAndTS(const Slice& key, int32_t *version, int32_t *timestamp) { }
+  virtual char GetMetaPrefix() const { return '\0'; }
+  //char meta_prefix_;
 
 #endif  // ROCKSDB_LITE
 
