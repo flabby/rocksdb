@@ -8,7 +8,9 @@
 
 CLEAN_FILES = # deliberately empty, so we can append below.
 CFLAGS += ${EXTRA_CFLAGS}
+#CFLAGS += '-g -gstabs+'
 CXXFLAGS += ${EXTRA_CXXFLAGS}
+#CXXFLAGS += '-g -gstabs+'
 LDFLAGS += $(EXTRA_LDFLAGS)
 MACHINE ?= $(shell uname -m)
 ARFLAGS = rs
@@ -906,7 +908,7 @@ libbz2.a:
 	-rm -rf bzip2-1.0.6
 	curl -O  http://www.bzip.org/1.0.6/bzip2-1.0.6.tar.gz
 	tar xvzf bzip2-1.0.6.tar.gz
-	cd bzip2-1.0.6 && make CFLAGS='-fPIC -Wall -Winline -O2 -g -D_FILE_OFFSET_BITS=64'
+	cd bzip2-1.0.6 && make CFLAGS='-fPIC -Wall -Winline -O2 -g -gstabs+ -D_FILE_OFFSET_BITS=64'
 	cp bzip2-1.0.6/libbz2.a .
 
 libsnappy.a:
