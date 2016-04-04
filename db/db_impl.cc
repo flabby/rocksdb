@@ -2238,10 +2238,16 @@ Status DBImpl::BackgroundCompaction(bool* madeProgress, JobContext* job_context,
   if (is_manual) {
     // another thread cannot pick up the same work
     manual_compaction_->in_progress = true;
-  } else if (manual_compaction_ != nullptr) {
-    // there should be no automatic compactions running when manual compaction
-    // is running
-    return Status::OK();
+  }
+
+  // Modify: We remove this limitation
+  else if (manual_compaction_ != nullptr) {
+  //  // there should be no automatic compactions running when manual compaction
+  //  // is running
+  //  return Status::OK();
+      LogToBuffer(log_buffer,
+                  "[%s] manual_compaction not null, we let auto compaction run\n",
+                  m->cfd->GetName().c_str());
   }
 
   // If there are no flush threads, then compaction thread needs to execute the
