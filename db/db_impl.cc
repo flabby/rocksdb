@@ -2245,9 +2245,7 @@ Status DBImpl::BackgroundCompaction(bool* madeProgress, JobContext* job_context,
   //  // there should be no automatic compactions running when manual compaction
   //  // is running
   //  return Status::OK();
-      LogToBuffer(log_buffer,
-                  "[%s] manual_compaction not null, we let auto compaction run\n",
-                  m->cfd->GetName().c_str());
+      LogToBuffer(log_buffer, "manual_compaction not null, we let auto compaction run\n");
   }
 
   // If there are no flush threads, then compaction thread needs to execute the
