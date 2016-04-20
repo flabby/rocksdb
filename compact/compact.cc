@@ -29,13 +29,21 @@ int main(int argc, char **argv)
      * rocksdb::Status status = rocksdb::DB::OpenForReadOnly(options, argv[1], &db);
      */
 
-    rocksdb::Status status = rocksdb::DBWithTTL::Open(options, argv[1], &db, '\0');
+    rocksdb::Status status = rocksdb::DBWithTTL::Open(options, argv[1], &db, 'S');
     assert(status.ok());
 
-    status = db->Merge(rocksdb::WriteOptions(), "a", "1");
-    assert(status.ok());
+    //status = db->Merge(rocksdb::WriteOptions(), "a", "1");
+    //assert(status.ok());
 
-    db->CompactRange(NULL, NULL);
+    for (int i = 0; i < 10; i++) {
+      printf ("i=%d\n", i);
+      db->CompactRange(NULL, NULL);
+    }
+
     cout << path << endl;
+
+    char ch;
+    scanf ("%c", &ch);
+
     return 0;
 }
