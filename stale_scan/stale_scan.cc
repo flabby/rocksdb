@@ -35,8 +35,9 @@ void Usage() {
   printf ("Usage:\n"
           "  ./stale_scan nemo_db_path [all | hash | list | zset | set ]  [new | old]\n"
           "  example:\n"
-          "    ./stale_scan  pika/db/ all         -- scan the stale data\n"
-          "    ./stale_scan  pika/db/ all  new    -- scan the valid data\n"
+          "    ./stale_scan  pika/db/ all         -- scan the stale data of all\n"
+          "    ./stale_scan  pika/db/ hash,list   -- scan the stale data of hash and list\n"
+          "    ./stale_scan  pika/db/ all  new    -- scan the valid data of all\n"
         );
 }
 
